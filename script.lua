@@ -1,137 +1,108 @@
--- =========================================================
--- STEAL AN EGG SCRIPT - 100% KEYLESS & OPEN SOURCE
--- Hosted on: github.com/apiapiapi3/aoi
--- =========================================================
+-- Simple GUI Auto Steal & ESP (apiapiapi3/aoi)
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+local Window = Library.CreateLib("Steal an Egg - Minimal", "DarkTheme")
 
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
-local Window = Rayfield:CreateWindow({
-   Name = "Steal an Egg | Keyless Menu",
-   LoadingTitle = "Memuat Script...",
-   LoadingSubtitle = "by apiapiapi3",
-   ConfigurationSaving = { Enabled = false }
-})
-
--- TAB MENU
-local TabMain = Window:CreateTab("Auto Steal & ESP", 4483362458)
-local TabMisc = Window:CreateTab("Misc / Server", 4483362458)
-
--- VARIABLES
-local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local TeleportService = game:GetService("TeleportService")
 local LocalPlayer = Players.LocalPlayer
 
-local SelectedTier = "Semua Tier"
-local AutoStealActive = false
-local ESPActive = false
+-- TAB UTAMA
+local Main = Window:NewTab("Main")
+local Section = Main:NewSection("Features")
 
--- =========================================================
--- TAB 1: AUTO STEAL & ESP
--- =========================================================
-
-TabMain:CreateDropdown({
-   Name = "Pilih Prioritas Tier Telur",
-   Options = {"Semua Tier", "Divine", "Eternal", "Secret", "Cosmic", "Mythic", "Legendary"},
-   CurrentOption = "Semua Tier",
-   Flag = "TierSelect",
-   Callback = function(Option)
-      SelectedTier = Option[1]
-   end,
-})
-
-TabMain:CreateToggle({
-   Name = "Nyalakan ESP Telur",
-   CurrentValue = false,
-   Flag = "ESPToggle",
-   Callback = function(Value)
-      ESPActive = Value
-   end,
-})
-
-TabMain:CreateToggle({
-   Name = "Auto Steal / Teleport ke Telur",
-   CurrentValue = false,
-   Flag = "StealToggle",
-   Callback = function(Value)
-      AutoStealActive = Value
-   end,
-})
-
--- =========================================================
--- TAB 2: MISC & SERVER HOP
--- =========================================================
-
-TabMisc:CreateButton({
-   Name = "Cari Server Sepi (Server Hop)",
-   Callback = function()
-      local HttpService = game:GetService("HttpService")
-      local TeleportService = game:GetService("TeleportService")
-      local PlaceId = game.PlaceId
-      local Servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")).data
-      
-      for _, server in pairs(Servers) do
-         if server.playing < server.maxPlayers and server.id ~= game.JobId then
-            TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LocalPlayer)
-            break
-         end
-      end
-   end,
-})
-
-TabMisc:CreateSlider({
-   Name = "Kecepatan Jalan (WalkSpeed)",
-   Range = {16, 120},
-   Increment = 1,
-   Suffix = " Speed",
-   CurrentValue = 16,
-   Flag = "SpeedSlider",
-   Callback = function(Value)
-      if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-         LocalPlayer.Character.Humanoid.WalkSpeed = Value
-      end
-   end,
-})
-
--- =========================================================
--- LOGIC FUNCTIONS
--- =========================================================
-
--- Logic ESP Telur
-task.spawn(function()
-    while task.wait(1) do
-        if ESPActive then
-            for _, v in pairs(Workspace:GetDescendants()) do
-                if v.Name:lower():find("egg") or v.Name:lower():find("telur") then
-                    if SelectedTier == "Semua Tier" or v.Name:find(SelectedTier) then
-                        if not v:FindFirstChild("EggHighlight") then
-                            local hl = Instance.new("Highlight")
-                            hl.Name = "EggHighlight"
-                            hl.FillColor = Color3.fromRGB(255, 215, 0)
-                            hl.Adornee = v
-                            hl.Parent = v
+-- 1. TOGGLE AUTO STEAL & AUTO TP BALIK
+Section:NewToggle("Auto Steal (No Cooldown + TP Back)", "Ambil instan lalu TP balik", function(state)
+    getgenv().AutoSteal = state
+    while getgenv().AutoSteal do
+        task.wait(0.05)
+        pcall(function()
+            for _, prompt in pairs(Workspace:GetDescendants()) do
+                if not getgenv().AutoSteal then break end
+                if prompt:IsA("ProximityPrompt") and prompt.Parent and prompt.Parent.Name:lower():find("egg") then
+                    local char = LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    
+                    if hrp then
+                        local distance = (hrp.Position - prompt.Parent.Position).Magnitude
+                        if distance <= prompt.MaxActivationDistance + 5 then
+                            prompt.HoldDuration = 0 -- Hapus cooldown hold
+                            local oldCFrame = hrp.CFrame -- Simpan posisi awal
+                            
+                            fireproximityprompt(prompt)
+                            task.wait(0.05)
+                            
+                            hrp.CFrame = oldCFrame -- TP balik instan
                         end
                     end
                 end
             end
-        end
+        end)
     end
 end)
 
--- Logic Auto Steal
-task.spawn(function()
-    while task.wait(0.3) do
-        if AutoStealActive then
-            for _, v in pairs(Workspace:GetDescendants()) do
-                if (v.Name:lower():find("egg") or v.Name:lower():find("telur")) and v:IsA("BasePart") then
-                    if SelectedTier == "Semua Tier" or v.Name:find(SelectedTier) then
-                        local char = LocalPlayer.Character
-                        if char and char:FindFirstChild("HumanoidRootPart") then
-                            char.HumanoidRootPart.CFrame = v.CFrame
-                            task.wait(0.2)
+-- 2. TOGGLE ESP (KG & DUIT)
+Section:NewToggle("ESP Egg (Kg & Value)", "Tampilkan info Kg dan Duit", function(state)
+    getgenv().ESPActive = state
+    if not state then
+        for _, v in pairs(Workspace:GetDescendants()) do
+            if v:FindFirstChild("EggBillboard") then
+                v.EggBillboard:Destroy()
+            end
+        end
+    else
+        task.spawn(function()
+            while getgenv().ESPActive do
+                for _, v in pairs(Workspace:GetDescendants()) do
+                    if v:IsA("ProximityPrompt") and v.Parent and v.Parent.Name:lower():find("egg") then
+                        local eggModel = v.Parent
+                        if not eggModel:FindFirstChild("EggBillboard") then
+                            local weight = eggModel:FindFirstChild("Weight") or eggModel:GetAttribute("Weight") or "?"
+                            local value = eggModel:FindFirstChild("Value") or eggModel:GetAttribute("Value") or "?"
+                            
+                            if typeof(weight) == "Instance" then weight = weight.Value end
+                            if typeof(value) == "Instance" then value = value.Value end
+
+                            local bg = Instance.new("BillboardGui")
+                            bg.Name = "EggBillboard"
+                            bg.AlwaysOnTop = true
+                            bg.Size = UDim2.new(0, 150, 0, 50)
+                            bg.StudsOffset = Vector3.new(0, 3, 0)
+                            bg.Adornee = eggModel
+                            bg.Parent = eggModel
+
+                            local txt = Instance.new("TextLabel")
+                            txt.Size = UDim2.new(1, 0, 1, 0)
+                            txt.BackgroundTransparency = 1
+                            txt.TextColor3 = Color3.fromRGB(255, 215, 0)
+                            txt.TextStrokeTransparency = 0
+                            txt.TextScaled = true
+                            txt.Text = "🥚 " .. eggModel.Name .. "\n⚖️ " .. tostring(weight) .. " Kg | 💰 $" .. tostring(value)
+                            txt.Parent = bg
                         end
                     end
                 end
+                task.wait(1)
             end
+        end)
+    end
+end)
+
+-- 3. SLIDER SPEED KENCANG
+Section:NewSlider("WalkSpeed", "Atur Kecepatan Jalan", 200, 16, function(s)
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = s
+    end
+end)
+
+-- 4. BUTTON SERVER HOP
+Section:NewButton("Server Hop (Server Sepi)", "Pindah ke server sepi", function()
+    local PlaceId = game.PlaceId
+    local Servers = game:GetService("HttpService"):JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")).data
+    for _, server in pairs(Servers) do
+        if server.playing < server.maxPlayers and server.id ~= game.JobId then
+            TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LocalPlayer)
+            break
         end
     end
 end)
